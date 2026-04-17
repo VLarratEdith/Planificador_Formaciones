@@ -1,0 +1,832 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Planificador de Formaciones - Cibervoluntarios</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
+    <!-- Firebase SDK (compat) -->
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+    <!-- Impresión / PDF -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script>
+    tailwind.config = {
+        theme: { extend: { fontFamily: { display: ['Space Grotesk','sans-serif'], body: ['DM Sans','sans-serif'] } } }
+    }
+    </script>
+    <style>
+        :root{--apdha:#0F766E;--bibl:#B45309;--bg:#FAF9F7;--card:#FFF;--border:#E7E5E4;--fg:#1C1917;--muted:#78716C;--accent:#0F766E;--accent-light:#CCFBF1}
+        *{box-sizing:border-box}body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--fg);height:100vh;overflow:hidden;margin:0}
+        h1,h2,h3,h4,h5{font-family:'Space Grotesk',sans-serif}
+        ::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:#D6D3D1;border-radius:3px}::-webkit-scrollbar-thumb:hover{background:#A8A29E}
+        #sidebar{width:272px;min-width:272px;background:linear-gradient(175deg,#1C1917 0%,#292524 50%,#1C1917 100%);display:flex;flex-direction:column;position:relative;z-index:40;transition:transform .35s cubic-bezier(.4,0,.2,1)}
+        #sidebar::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 30% 10%,rgba(15,118,110,.12) 0%,transparent 60%);pointer-events:none}
+        .nav-item{display:flex;align-items:center;gap:12px;padding:11px 20px;color:#A8A29E;font-size:14px;font-weight:500;cursor:pointer;border-left:3px solid transparent;transition:all .2s}
+        .nav-item:hover{color:#E7E5E4;background:rgba(255,255,255,.04)}.nav-item.active{color:#F5F5F4;border-left-color:var(--accent);background:rgba(15,118,110,.1)}
+        .nav-item i{width:20px;text-align:center;font-size:15px}
+        .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:1px;background:var(--border);border:1px solid var(--border);border-radius:12px;overflow:hidden}
+        .cal-hdr{background:#F5F5F4;padding:8px;text-align:center;font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+        .cal-cell{background:var(--card);min-height:90px;padding:6px;cursor:default;transition:background .15s}.cal-cell:hover{background:#FAFAF9}
+        .cal-cell.other{background:#FAFAF9}.cal-cell.other .dn{color:#D6D3D1}
+        .dn{font-size:13px;font-weight:600;color:var(--fg);margin-bottom:3px}
+        .cpill{font-size:10px;padding:2px 6px;border-radius:4px;margin-bottom:2px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;font-weight:500;transition:transform .15s,box-shadow .15s}
+        .cpill:hover{transform:scale(1.03);box-shadow:0 1px 4px rgba(0,0,0,.12)}
+        .wcard{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px;cursor:pointer;transition:all .25s;position:relative;overflow:hidden}
+        .wcard:hover{transform:translateY(-2px);box-shadow:0 8px 25px rgba(0,0,0,.08);border-color:#D6D3D1}
+        .ibadge{font-size:11px;padding:3px 10px;border-radius:20px;font-weight:600;display:inline-block}
+        #modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);backdrop-filter:blur(4px);z-index:100;display:none;align-items:center;justify-content:center}
+        #modal-overlay.show{display:flex}
+        #modal-content{background:var(--card);border-radius:16px;max-width:640px;width:95%;max-height:88vh;overflow-y:auto;box-shadow:0 25px 60px rgba(0,0,0,.2);animation:slideUp .3s cubic-bezier(.4,0,.2,1)}
+        @keyframes slideUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+        .sblock{border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:8px}
+        .shdr{padding:10px 14px;cursor:pointer;display:flex;align-items:center;gap:10px;background:#FAFAF9;transition:background .15s}.shdr:hover{background:#F5F5F4}
+        .sbody{padding:0 14px;max-height:0;overflow:hidden;transition:max-height .3s ease,padding .3s ease}
+        .sbody.open{max-height:300px;padding:10px 14px 14px}
+        .sbody textarea{width:100%;min-height:80px;border:1px solid var(--border);border-radius:8px;padding:10px;font-family:'DM Sans',sans-serif;font-size:13px;resize:vertical;outline:none;transition:border-color .2s}
+        .sbody textarea:focus{border-color:var(--accent)}
+        .ndot{width:8px;height:8px;border-radius:50%;background:var(--accent);display:none;flex-shrink:0}.ndot.on{display:block}
+        #toast-c{position:fixed;bottom:24px;right:24px;z-index:200;display:flex;flex-direction:column;gap:8px}
+        .toast{padding:12px 20px;border-radius:10px;color:#fff;font-size:13px;font-weight:500;transform:translateX(120%);transition:transform .3s cubic-bezier(.4,0,.2,1);box-shadow:0 4px 15px rgba(0,0,0,.15)}
+        .toast.show{transform:translateX(0)}.toast-ok{background:#0F766E}.toast-err{background:#DC2626}.toast-info{background:#1E40AF}
+        .fi{width:100%;padding:10px 14px;border:1px solid var(--border);border-radius:8px;font-family:'DM Sans',sans-serif;font-size:14px;background:var(--card);outline:none;transition:border-color .2s,box-shadow .2s}
+        .fi:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(15,118,110,.1)}
+        .fl{display:block;font-size:13px;font-weight:600;color:var(--fg);margin-bottom:6px}
+        .avail-cell{text-align:center;padding:8px 4px;font-size:12px;border-radius:6px}
+        .avail-free{background:#ECFDF5;color:#065F46}.avail-busy{color:#fff;font-weight:500;font-size:11px}
+        .btn-p{background:var(--accent);color:#fff;padding:10px 20px;border-radius:8px;font-weight:600;font-size:14px;border:none;cursor:pointer;transition:all .2s}
+        .btn-p:hover{background:#115E59;transform:translateY(-1px);box-shadow:0 4px 12px rgba(15,118,110,.3)}
+        .btn-p:disabled{opacity:.6;cursor:not-allowed;transform:none;box-shadow:none}
+        .btn-s{background:#F5F5F4;color:var(--fg);padding:10px 20px;border-radius:8px;font-weight:600;font-size:14px;border:1px solid var(--border);cursor:pointer;transition:all .2s}
+        .btn-s:hover{background:#E7E5E4}
+        .btn-d{background:#FEE2E2;color:#DC2626;padding:10px 20px;border-radius:8px;font-weight:600;font-size:14px;border:none;cursor:pointer;transition:all .2s}
+        .btn-d:hover{background:#FECACA}
+        .scard{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px 18px}
+        .snum{font-family:'Space Grotesk',sans-serif;font-size:26px;font-weight:700;line-height:1}
+        .fbtn{padding:6px 14px;border-radius:20px;font-size:13px;font-weight:500;border:1px solid var(--border);background:var(--card);cursor:pointer;transition:all .2s}
+        .fbtn.active{border-color:var(--accent);background:var(--accent-light);color:var(--accent)}.fbtn:hover:not(.active){background:#F5F5F4}
+        #hamburger{display:none;position:fixed;top:16px;left:16px;z-index:50;background:var(--fg);color:#fff;border:none;border-radius:8px;width:42px;height:42px;cursor:pointer;font-size:18px}
+        #pdf-area{position:absolute;left:-9999px;top:0;width:1100px;background:#fff;font-family:'DM Sans',sans-serif}
+        @media print{body *{visibility:hidden}#pdf-area,#pdf-area *{visibility:visible}#pdf-area{position:fixed;left:0;top:0;width:100%}}
+        @media(max-width:900px){#sidebar{position:fixed;left:0;top:0;bottom:0;transform:translateX(-100%)}#sidebar.open{transform:translateX(0)}#hamburger{display:flex;align-items:center;justify-content:center}.cal-cell{min-height:65px;padding:4px}.cpill{font-size:9px;padding:1px 4px}.dn{font-size:11px}}
+        @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important}}
+        /* Auth screen */
+        #auth-screen{background:linear-gradient(160deg,#1C1917 0%,#292524 40%,#1a2320 100%);position:fixed;inset:0;z-index:300;display:flex;align-items:center;justify-content:center}
+        #auth-screen .bg-grid{position:absolute;inset:0;background-image:radial-gradient(rgba(15,118,110,.08) 1px,transparent 1px);background-size:32px 32px;pointer-events:none}
+        #auth-card{position:relative;background:#fff;border-radius:20px;box-shadow:0 25px 80px rgba(0,0,0,.4);width:95%;max-width:420px;max-height:90vh;overflow-y:auto}
+        .auth-input{width:100%;padding:11px 14px 11px 42px;border:1.5px solid var(--border);border-radius:10px;font-family:'DM Sans',sans-serif;font-size:14px;outline:none;transition:border-color .2s,box-shadow .2s;background:#FAFAF9}
+        .auth-input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(15,118,110,.1);background:#fff}
+        .auth-input-wrap{position:relative}.auth-input-wrap i{position:absolute;left:14px;top:50%;transform:translateY(-50%);color:#A8A29E;font-size:14px}
+        .sync-dot{width:8px;height:8px;border-radius:50%;display:inline-block;flex-shrink:0}
+        .sync-dot.ok{background:#059669}.sync-dot.pending{background:#F59E0B;animation:pulse 1s infinite}.sync-dot.err{background:#DC2626}.sync-dot.off{background:#A8A29E}
+        @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+        .setup-step{display:flex;gap:14px;margin-bottom:18px}.setup-num{width:28px;height:28px;border-radius:50%;background:var(--accent-light);color:var(--accent);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0}
+        .setup-code{background:#1C1917;color:#A8A29E;padding:12px 16px;border-radius:10px;font-size:12px;font-family:monospace;overflow-x:auto;margin:8px 0;line-height:1.6;white-space:pre}
+    </style>
+</head>
+<body>
+
+<!-- ============ PANTALLA DE AUTENTICACIÓN ============ -->
+<div id="auth-screen">
+    <div class="bg-grid"></div>
+    <div id="auth-card">
+        <!-- LOGIN -->
+        <div id="auth-login" class="p-8">
+            <div class="text-center mb-8">
+                <div class="w-14 h-14 rounded-xl flex items-center justify-center mx-auto mb-4" style="background:var(--accent)"><i class="fas fa-chalkboard-user text-white text-xl"></i></div>
+                <h1 class="text-2xl font-bold" style="font-family:'Space Grotesk'">Planificador</h1>
+                <p class="text-sm text-stone-500 mt-1">Formaciones Cibervoluntarios</p>
+            </div>
+            <div id="login-err" class="text-sm text-red-600 mb-4 hidden rounded-lg bg-red-50 p-3"></div>
+            <form onsubmit="handleLogin(event)">
+                <div class="mb-4"><label class="fl">Correo electrónico</label><div class="auth-input-wrap"><i class="fas fa-envelope"></i><input id="l-email" type="email" class="auth-input" required></div></div>
+                <div class="mb-2"><label class="fl">Contraseña</label><div class="auth-input-wrap"><i class="fas fa-lock"></i><input id="l-pass" type="password" class="auth-input" required minlength="6"></div></div>
+                <div class="flex justify-end mb-6"><button type="button" onclick="showAuth('forgot')" class="text-xs text-teal-700 hover:underline">He olvidado mi contraseña</button></div>
+                <button type="submit" id="l-btn" class="btn-p w-full py-3"><span>Iniciar sesión</span></button>
+            </form>
+            <p class="text-center text-sm text-stone-500 mt-6">No tienes cuenta? <button onclick="showAuth('register')" class="text-teal-700 font-semibold hover:underline">Regístrate</button></p>
+            <div class="text-center mt-5 pt-4 border-t border-stone-100">
+                <button onclick="showAuth('setup')" class="text-xs text-stone-400 hover:text-stone-600 transition"><i class="fas fa-gear mr-1"></i>Configurar Firebase</button>
+            </div>
+        </div>
+        <!-- REGISTER -->
+        <div id="auth-register" class="p-8 hidden">
+            <div class="text-center mb-6">
+                <div class="w-12 h-12 rounded-xl flex items-center justify-center mx-auto mb-3" style="background:var(--accent-light)"><i class="fas fa-user-plus text-lg" style="color:var(--accent)"></i></div>
+                <h2 class="text-xl font-bold" style="font-family:'Space Grotesk'">Crear cuenta</h2>
+            </div>
+            <div id="reg-err" class="text-sm text-red-600 mb-4 hidden rounded-lg bg-red-50 p-3"></div>
+            <form onsubmit="handleRegister(event)">
+                <div class="mb-4"><label class="fl">Nombre</label><div class="auth-input-wrap"><i class="fas fa-user"></i><input id="r-name" type="text" class="auth-input" required placeholder="Tu nombre"></div></div>
+                <div class="mb-4"><label class="fl">Correo electrónico</label><div class="auth-input-wrap"><i class="fas fa-envelope"></i><input id="r-email" type="email" class="auth-input" required></div></div>
+                <div class="mb-4"><label class="fl">Contraseña</label><div class="auth-input-wrap"><i class="fas fa-lock"></i><input id="r-pass" type="password" class="auth-input" required minlength="6"></div></div>
+                <div class="mb-6"><label class="fl">Confirmar contraseña</label><div class="auth-input-wrap"><i class="fas fa-lock"></i><input id="r-pass2" type="password" class="auth-input" required minlength="6"></div></div>
+                <button type="submit" id="r-btn" class="btn-p w-full py-3"><span>Crear cuenta</span></button>
+            </form>
+            <p class="text-center text-sm text-stone-500 mt-6">Ya tienes cuenta? <button onclick="showAuth('login')" class="text-teal-700 font-semibold hover:underline">Inicia sesión</button></p>
+        </div>
+        <!-- FORGOT -->
+        <div id="auth-forgot" class="p-8 hidden">
+            <div class="text-center mb-6">
+                <div class="w-12 h-12 rounded-xl flex items-center justify-center mx-auto mb-3" style="background:#FEF3C7"><i class="fas fa-key text-lg text-amber-600"></i></div>
+                <h2 class="text-xl font-bold" style="font-family:'Space Grotesk'">Recuperar contraseña</h2>
+                <p class="text-sm text-stone-500 mt-1">Te enviaremos un enlace para restablecerla</p>
+            </div>
+            <div id="forgot-err" class="text-sm text-red-600 mb-4 hidden rounded-lg bg-red-50 p-3"></div>
+            <div id="forgot-ok" class="text-sm text-teal-700 mb-4 hidden rounded-lg bg-teal-50 p-3"></div>
+            <form onsubmit="handleForgot(event)">
+                <div class="mb-6"><label class="fl">Correo electrónico</label><div class="auth-input-wrap"><i class="fas fa-envelope"></i><input id="f-email" type="email" class="auth-input" required></div></div>
+                <button type="submit" id="f-btn" class="btn-p w-full py-3"><span>Enviar enlace</span></button>
+            </form>
+            <p class="text-center text-sm text-stone-500 mt-6"><button onclick="showAuth('login')" class="text-teal-700 font-semibold hover:underline"><i class="fas fa-arrow-left mr-1"></i>Volver a inicio de sesión</button></p>
+        </div>
+        <!-- SETUP GUIDE -->
+        <div id="auth-setup" class="p-8 hidden">
+            <div class="flex items-center gap-3 mb-6">
+                <div class="w-10 h-10 rounded-lg flex items-center justify-center" style="background:#FEF3C7"><i class="fas fa-gear text-amber-600"></i></div>
+                <h2 class="text-lg font-bold" style="font-family:'Space Grotesk'">Configurar Firebase</h2>
+            </div>
+            <p class="text-sm text-stone-600 mb-6 leading-relaxed">Para sincronizar tus datos entre dispositivos necesitas un proyecto gratuito de Firebase. Sigue estos pasos:</p>
+            <div class="setup-step"><div class="setup-num">1</div><div><p class="text-sm font-semibold mb-1">Crear proyecto</p><p class="text-xs text-stone-500 leading-relaxed">Ve a <a href="https://console.firebase.google.com" target="_blank" class="text-teal-700 underline font-semibold">console.firebase.google.com</a> y crea un proyecto nuevo (puedes dejar el nombre por defecto).</p></div></div>
+            <div class="setup-step"><div class="setup-num">2</div><div><p class="text-sm font-semibold mb-1">Activar Authentication</p><p class="text-xs text-stone-500 leading-relaxed">En el menú lateral entra en <strong>Build > Authentication</strong>. Haz clic en "Get started" y activa el proveedor <strong>Email/Password</strong>. Guarda los cambios.</p></div></div>
+            <div class="setup-step"><div class="setup-num">3</div><div><p class="text-sm font-semibold mb-1">Crear base de datos Firestore</p><p class="text-xs text-stone-500 leading-relaxed">En <strong>Build > Firestore Database</strong>, haz clic en "Create database". Elige <strong>Start in test mode</strong> y selecciona una región cercana (ej: europe-west1). Espera a que se cree.</p></div></div>
+            <div class="setup-step"><div class="setup-num">4</div><div><p class="text-sm font-semibold mb-1">Obtener la configuración</p><p class="text-xs text-stone-500 leading-relaxed">En <strong>Project settings</strong> (icono de engranaje arriba a la derecha), desplázate hasta "Your apps" y haz clic en el icono <strong>&lt;/&gt;</strong> (Web). Registra la app y copia el objeto <code>firebaseConfig</code>.</p></div></div>
+            <div class="setup-step"><div class="setup-num">5</div><div><p class="text-sm font-semibold mb-1">Pegar la configuración</p><p class="text-xs text-stone-500 leading-relaxed">Abre el código fuente de esta página (Ctrl+U) y busca <code>FIREBASE_CONFIG</code> al inicio del script. Reemplaza los valores con los que copiaste. El resultado debe ser algo así:</p>
+                <div class="setup-code">const FIREBASE_CONFIG = {
+  apiKey: "AIzaSy...",
+  authDomain: "mi-proyecto.firebaseapp.com",
+  projectId: "mi-proyecto-id",
+  storageBucket: "mi-proyecto.appspot.com",
+  messagingSenderId: "123456789",
+  appId: "1:123456789:web:abc..."
+};</div>
+            </div></div>
+            <div class="setup-step"><div class="setup-num">6</div><div><p class="text-sm font-semibold mb-1">Recargar la página</p><p class="text-xs text-stone-500 leading-relaxed">Guarda el archivo y recarga la página. Ya podrás registrarte e iniciar sesión.</p></div></div>
+            <p class="text-xs text-stone-400 mt-4 p-3 bg-stone-50 rounded-lg"><i class="fas fa-info-circle mr-1"></i> Mientras tanto, la app funciona en modo local (los datos solo se guardan en este navegador).</p>
+            <div class="mt-6"><button onclick="showAuth('login')" class="btn-s w-full py-3"><i class="fas fa-arrow-left mr-2"></i>Volver</button></div>
+        </div>
+    </div>
+</div>
+
+<!-- ============ APP PRINCIPAL ============ -->
+<div id="app" class="flex h-screen" style="display:none">
+    <aside id="sidebar">
+        <div class="p-6 pb-4 relative">
+            <div class="flex items-center gap-3"><div class="w-9 h-9 rounded-lg flex items-center justify-center" style="background:var(--accent)"><i class="fas fa-chalkboard-user text-white text-sm"></i></div><div><h1 class="text-base font-bold text-stone-100 leading-tight" style="font-family:'Space Grotesk'">Planificador</h1><p class="text-xs text-stone-500">Cibervoluntarios</p></div></div>
+        </div>
+        <nav class="flex-1 px-3 mt-1">
+            <div class="nav-item active" data-view="calendar"><i class="fas fa-calendar-days"></i>Calendario</div>
+            <div class="nav-item" data-view="workshops"><i class="fas fa-layer-group"></i>Talleres</div>
+            <div class="nav-item" data-view="add"><i class="fas fa-plus-circle"></i>Nueva Capacitación</div>
+            <div class="nav-item" data-view="availability"><i class="fas fa-clock"></i>Disponibilidad</div>
+        </nav>
+        <!-- Usuario -->
+        <div class="px-5 py-3 border-t border-stone-800">
+            <div class="flex items-center gap-3">
+                <div id="user-avatar" class="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold text-white flex-shrink-0" style="background:var(--accent)"></div>
+                <div class="flex-1 min-w-0">
+                    <p id="user-name" class="text-sm text-stone-200 font-medium truncate"></p>
+                    <div class="flex items-center gap-1.5 mt-0.5"><span id="sync-dot" class="sync-dot off"></span><span id="sync-label" class="text-[10px] text-stone-500">Local</span></div>
+                </div>
+                <button onclick="handleLogout()" class="text-stone-500 hover:text-stone-300 transition p-1" title="Cerrar sesión"><i class="fas fa-right-from-bracket text-sm"></i></button>
+            </div>
+        </div>
+        <!-- Leyenda -->
+        <div class="p-5 pt-3 border-t border-stone-800">
+            <p class="text-xs text-stone-500 font-semibold uppercase tracking-wider mb-3">Instituciones</p>
+            <div id="legend-list" class="flex flex-col gap-2"></div>
+        </div>
+    </aside>
+    <main id="main" class="flex-1 overflow-y-auto">
+        <div id="stats-bar" class="p-5 pb-0"><div class="grid grid-cols-2 lg:grid-cols-4 gap-3"></div></div>
+        <section id="view-calendar" class="p-5">
+            <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
+                <div class="flex items-center gap-3">
+                    <button onclick="navMonth(-1)" class="w-9 h-9 rounded-lg border border-stone-200 bg-white flex items-center justify-center hover:bg-stone-50 transition" aria-label="Mes anterior"><i class="fas fa-chevron-left text-xs text-stone-500"></i></button>
+                    <h2 id="cal-title" class="text-xl font-bold" style="font-family:'Space Grotesk'"></h2>
+                    <button onclick="navMonth(1)" class="w-9 h-9 rounded-lg border border-stone-200 bg-white flex items-center justify-center hover:bg-stone-50 transition" aria-label="Mes siguiente"><i class="fas fa-chevron-right text-xs text-stone-500"></i></button>
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="forceSync()" class="btn-s text-sm py-2 px-4" id="sync-btn" title="Forzar sincronización"><i class="fas fa-rotate mr-2"></i>Sincronizar</button>
+                    <button onclick="printCalendar()" class="btn-s text-sm py-2 px-4"><i class="fas fa-print mr-2"></i>Imprimir</button>
+                    <button onclick="downloadPDF()" class="btn-p text-sm py-2 px-4"><i class="fas fa-file-pdf mr-2"></i>PDF</button>
+                </div>
+            </div>
+            <div id="cal-grid" class="cal-grid"></div>
+        </section>
+        <section id="view-workshops" class="p-5 hidden">
+            <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
+                <h2 class="text-xl font-bold" style="font-family:'Space Grotesk'">Todos los Talleres</h2>
+                <div class="relative"><i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-stone-400 text-xs"></i><input id="search-input" type="text" placeholder="Buscar taller..." class="fi pl-9 py-2 text-sm" style="width:200px"></div>
+            </div>
+            <div id="filter-bar" class="flex gap-2 mb-4 flex-wrap"></div>
+            <div id="workshop-list" class="grid gap-4 md:grid-cols-2 xl:grid-cols-3"></div>
+        </section>
+        <section id="view-add" class="p-5 hidden">
+            <h2 id="form-title" class="text-xl font-bold mb-5" style="font-family:'Space Grotesk'">Nueva Capacitación</h2>
+            <form id="workshop-form" class="max-w-2xl" onsubmit="handleFormSubmit(event)">
+                <div class="grid gap-5">
+                    <div class="grid md:grid-cols-2 gap-4">
+                        <div><label class="fl">ID del Taller</label><input id="f-id" class="fi" required placeholder="Ej: 82858"></div>
+                        <div><label class="fl">Institución</label><div class="flex gap-2"><select id="f-inst" class="fi flex-1" required></select><button type="button" onclick="addCustomInst()" class="btn-s py-2 px-3 text-sm" title="Añadir institución"><i class="fas fa-plus"></i></button></div></div>
+                    </div>
+                    <div><label class="fl">Título del Taller</label><input id="f-title" class="fi" required placeholder="Ej: Crear contenidos IA"></div>
+                    <div class="grid md:grid-cols-2 gap-4">
+                        <div><label class="fl">Hora inicio</label><input id="f-start" type="time" class="fi" required></div>
+                        <div><label class="fl">Hora fin</label><input id="f-end" type="time" class="fi" required></div>
+                    </div>
+                    <div><label class="fl">Fechas de las sesiones</label><div class="flex gap-2 mb-2"><input id="f-date" type="date" class="fi flex-1"><button type="button" onclick="addDateToList()" class="btn-s py-2 px-4 text-sm"><i class="fas fa-plus mr-1"></i>Añadir</button></div><div id="dates-list" class="flex flex-wrap gap-2"></div></div>
+                    <div class="flex gap-3 pt-2">
+                        <button type="submit" class="btn-p"><i class="fas fa-save mr-2"></i>Guardar Taller</button>
+                        <button type="button" onclick="cancelEdit()" class="btn-s hidden" id="cancel-btn">Cancelar</button>
+                    </div>
+                </div>
+            </form>
+        </section>
+        <section id="view-availability" class="p-5 hidden">
+            <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
+                <h2 class="text-xl font-bold" style="font-family:'Space Grotesk'">Disponibilidad</h2>
+                <div class="flex items-center gap-3">
+                    <button onclick="navMonthAvail(-1)" class="w-9 h-9 rounded-lg border border-stone-200 bg-white flex items-center justify-center hover:bg-stone-50 transition"><i class="fas fa-chevron-left text-xs text-stone-500"></i></button>
+                    <h3 id="avail-title" class="text-base font-semibold" style="font-family:'Space Grotesk'"></h3>
+                    <button onclick="navMonthAvail(1)" class="w-9 h-9 rounded-lg border border-stone-200 bg-white flex items-center justify-center hover:bg-stone-50 transition"><i class="fas fa-chevron-right text-xs text-stone-500"></i></button>
+                </div>
+            </div>
+            <div id="avail-summary" class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5"></div>
+            <div class="bg-white rounded-xl border border-stone-200 overflow-x-auto">
+                <table class="w-full text-sm"><thead><tr class="bg-stone-50"><th class="text-left py-3 px-4 font-semibold text-stone-500 text-xs uppercase tracking-wider">Fecha</th><th class="text-left py-3 px-4 font-semibold text-stone-500 text-xs uppercase tracking-wider">Día</th><th class="text-center py-3 px-4 font-semibold text-stone-500 text-xs uppercase tracking-wider">Mañana (10-13)</th><th class="text-center py-3 px-4 font-semibold text-stone-500 text-xs uppercase tracking-wider">Tarde (17-20)</th></tr></thead><tbody id="avail-body"></tbody></table>
+            </div>
+        </section>
+    </main>
+</div>
+
+<div id="modal-overlay" role="dialog" aria-modal="true"><div id="modal-content"></div></div>
+<div id="toast-c" aria-live="polite"></div>
+<div id="pdf-area"></div>
+
+<script>
+// ================================================================
+//  CONFIGURACIÓN DE FIREBASE — Reemplaza con los datos de tu proyecto
+// ================================================================
+const FIREBASE_CONFIG = {
+    apiKey: "TU_API_KEY_AQUI",
+    authDomain: "TU_PROYECTO.firebaseapp.com",
+    projectId: "TU_PROYECTO_ID",
+    storageBucket: "TU_PROYECTO.appspot.com",
+    messagingSenderId: "TU_SENDER_ID",
+    appId: "TU_APP_ID"
+};
+
+// ================================================================
+//  DATOS INICIALES
+// ================================================================
+const INITIAL_WORKSHOPS = [
+    {id:"82858",title:"Crear contenidos IA",institution:"APDHA",scheduleStart:"10:00",scheduleEnd:"13:00",dates:["2026-04-13","2026-04-16","2026-04-20","2026-04-23"]},
+    {id:"82864",title:"Buscar empleo en mundo digital",institution:"APDHA",scheduleStart:"10:00",scheduleEnd:"13:00",dates:["2026-04-27","2026-04-30","2026-05-04","2026-05-07"]},
+    {id:"82866",title:"Manejar tur RRSS",institution:"APDHA",scheduleStart:"10:00",scheduleEnd:"13:00",dates:["2026-05-11","2026-05-14","2026-05-18","2026-05-21"]},
+    {id:"82867",title:"Aprende en internet",institution:"APDHA",scheduleStart:"10:00",scheduleEnd:"13:00",dates:["2026-05-25","2026-05-28","2026-06-01","2026-06-04"]},
+    {id:"69832",title:"Apps útiles para gestión de trámites en Internet",institution:"Biblioteca Municipal Vejer",scheduleStart:"17:00",scheduleEnd:"20:00",dates:["2026-05-25","2026-05-26","2026-05-27","2026-05-28"]},
+    {id:"83620",title:"Aprende en Internet",institution:"Biblioteca Municipal Vejer",scheduleStart:"17:00",scheduleEnd:"20:00",dates:["2026-06-01","2026-06-02","2026-06-03","2026-06-04"]},
+    {id:"82868",title:"Tu CV digital",institution:"APDHA",scheduleStart:"10:00",scheduleEnd:"13:00",dates:["2026-06-08","2026-06-11","2026-06-15","2026-06-18"]}
+];
+const DEFAULT_COLORS = {"APDHA":"#0F766E","Biblioteca Municipal Vejer":"#B45309"};
+const COLOR_POOL = ["#7C3AED","#DC2626","#0369A1","#059669","#DB2777","#4F46E5","#EA580C","#0891B2","#4338CA","#C2410C"];
+const DAY_NAMES = ["Lun","Mar","Mié","Jue","Vie","Sáb","Dom"];
+const DAY_FULL = ["lunes","martes","miércoles","jueves","viernes","sábado","domingo"];
+const MONTH_NAMES = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
+
+// ================================================================
+//  ESTADO GLOBAL
+// ================================================================
+let S = {
+    view:"calendar", calYear:2026, calMonth:3, availYear:2026, availMonth:3,
+    workshops:[], instColors:{}, editingId:null, formDates:[], filterInst:"all", searchQuery:"",
+    user:null, firebaseReady:false
+};
+
+// ================================================================
+//  FIREBASE — Inicialización y comprobación
+// ================================================================
+let fbApp, fbAuth, fbDb;
+function isFirebaseConfigured() {
+    return FIREBASE_CONFIG.apiKey && !FIREBASE_CONFIG.apiKey.startsWith("TU_");
+}
+function initFirebase() {
+    if (!isFirebaseConfigured()) { S.firebaseReady = false; return; }
+    try {
+        fbApp = firebase.initializeApp(FIREBASE_CONFIG);
+        fbAuth = firebase.auth();
+        fbDb = firebase.firestore();
+        // Persistencia offline de Firestore
+        fbDb.enablePersistence({ synchronizeTabs: true }).catch(() => {});
+        S.firebaseReady = true;
+    } catch(e) {
+        console.warn("Firebase init error:", e);
+        S.firebaseReady = false;
+    }
+}
+
+// ================================================================
+//  AUTENTICACIÓN
+// ================================================================
+function showAuth(view) {
+    ["login","register","forgot","setup"].forEach(v => {
+        document.getElementById("auth-"+v).classList.toggle("hidden", v !== view);
+    });
+    // Limpiar errores
+    ["login-err","reg-err","forgot-err","forgot-ok"].forEach(id => {
+        const el = document.getElementById(id);
+        el.classList.add("hidden"); el.textContent = "";
+    });
+}
+function setAuthLoading(btnId, loading) {
+    const btn = document.getElementById(btnId);
+    if (loading) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Espere...'; }
+    else { btn.disabled = false; }
+}
+function showAuthError(id, msg) {
+    const el = document.getElementById(id);
+    el.textContent = msg; el.classList.remove("hidden");
+}
+
+async function handleLogin(e) {
+    e.preventDefault();
+    if (!S.firebaseReady) { showAuthError("login-err","Firebase no configurado. Pulsa 'Configurar Firebase' para instrucciones."); return; }
+    const email = document.getElementById("l-email").value.trim();
+    const pass = document.getElementById("l-pass").value;
+    showAuthError("login-err","");
+    setAuthLoading("l-btn", true);
+    try {
+        await fbAuth.signInWithEmailAndPassword(email, pass);
+    } catch(err) {
+        const msgs = { "auth/invalid-credential":"Correo o contraseña incorrectos","auth/user-not-found":"No existe una cuenta con este correo","auth/wrong-password":"Contraseña incorrecta","auth/too-many-requests":"Demasiados intentos. Inténtalo más tarde","auth/invalid-email":"Correo electrónico no válido" };
+        showAuthError("login-err", msgs[err.code] || err.message);
+    }
+    setAuthLoading("l-btn", false);
+}
+async function handleRegister(e) {
+    e.preventDefault();
+    if (!S.firebaseReady) { showAuthError("reg-err","Firebase no configurado."); return; }
+    const name = document.getElementById("r-name").value.trim();
+    const email = document.getElementById("r-email").value.trim();
+    const pass = document.getElementById("r-pass").value;
+    const pass2 = document.getElementById("r-pass2").value;
+    showAuthError("reg-err","");
+    if (pass !== pass2) { showAuthError("reg-err","Las contraseñas no coinciden."); return; }
+    setAuthLoading("r-btn", true);
+    try {
+        const cred = await fbAuth.createUserWithEmailAndPassword(email, pass);
+        await cred.user.updateProfile({ displayName: name });
+        // Crear documento en Firestore con datos iniciales
+        const localData = loadFromLocalStorage();
+        await fbDb.collection("users").doc(cred.user.uid).set({
+            displayName: name,
+            workshops: localData.workshops || JSON.parse(JSON.stringify(INITIAL_WORKSHOPS)),
+            instColors: localData.instColors || {...DEFAULT_COLORS},
+            notes: localData.notes || {},
+            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+    } catch(err) {
+        const msgs = { "auth/email-already-in-use":"Ya existe una cuenta con este correo","auth/weak-password":"La contraseña debe tener al menos 6 caracteres","auth/invalid-email":"Correo electrónico no válido" };
+        showAuthError("reg-err", msgs[err.code] || err.message);
+    }
+    setAuthLoading("r-btn", false);
+}
+async function handleForgot(e) {
+    e.preventDefault();
+    if (!S.firebaseReady) { showAuthError("forgot-err","Firebase no configurado."); return; }
+    const email = document.getElementById("f-email").value.trim();
+    showAuthError("forgot-err",""); document.getElementById("forgot-ok").classList.add("hidden");
+    setAuthLoading("f-btn", true);
+    try {
+        await fbAuth.sendPasswordResetEmail(email);
+        document.getElementById("forgot-ok").textContent = "Se ha enviado un enlace a " + email + ". Revisa tu bandeja de entrada.";
+        document.getElementById("forgot-ok").classList.remove("hidden");
+    } catch(err) {
+        const msgs = { "auth/user-not-found":"No existe una cuenta con este correo","auth/invalid-email":"Correo electrónico no válido" };
+        showAuthError("forgot-err", msgs[err.code] || err.message);
+    }
+    setAuthLoading("f-btn", false);
+}
+async function handleLogout() {
+    if (S.firebaseReady && fbAuth.currentUser) {
+        await fbAuth.signOut();
+    }
+    S.user = null;
+    // Si Firebase no está configurado, limpiar y mostrar auth de todos modos
+    document.getElementById("app").style.display = "none";
+    document.getElementById("auth-screen").style.display = "flex";
+    showAuth("login");
+}
+function onAuthStateChange(user) {
+    if (user) {
+        S.user = { uid: user.uid, name: user.displayName || user.email.split("@")[0], email: user.email };
+        document.getElementById("auth-screen").style.display = "none";
+        document.getElementById("app").style.display = "flex";
+        document.getElementById("user-name").textContent = S.user.name;
+        document.getElementById("user-avatar").textContent = S.user.name.charAt(0).toUpperCase();
+        if (S.firebaseReady) {
+            loadFromCloud().then(() => renderCurrentView());
+        } else {
+            loadLocalToState();
+            setSyncUI("off","Local");
+            renderCurrentView();
+        }
+    } else {
+        // No logueado
+        if (!S.firebaseReady) {
+            // Modo offline: permitir acceso directo sin login
+            S.user = { uid: "local", name: "Usuario local", email: "" };
+            document.getElementById("auth-screen").style.display = "none";
+            document.getElementById("app").style.display = "flex";
+            document.getElementById("user-name").textContent = "Modo local";
+            document.getElementById("user-avatar").textContent = "L";
+            document.getElementById("sync-btn").style.display = "none";
+            loadLocalToState();
+            setSyncUI("off","Solo este dispositivo");
+            renderCurrentView();
+        }
+    }
+}
+
+// ================================================================
+//  DATOS — Carga y guardado (Firestore + localStorage)
+// ================================================================
+function loadFromLocalStorage() {
+    try {
+        const w = localStorage.getItem("cibervo_workshops");
+        const c = localStorage.getItem("cibervo_colors");
+        const n = localStorage.getItem("cibervo_all_notes");
+        return {
+            workshops: w ? JSON.parse(w) : null,
+            instColors: c ? JSON.parse(c) : null,
+            notes: n ? JSON.parse(n) : {}
+        };
+    } catch(e) { return { workshops: null, instColors: null, notes: {} }; }
+}
+function loadLocalToState() {
+    const local = loadFromLocalStorage();
+    S.workshops = local.workshops || JSON.parse(JSON.stringify(INITIAL_WORKSHOPS));
+    S.instColors = local.instColors || {...DEFAULT_COLORS};
+    saveLocalCache();
+}
+function saveLocalCache() {
+    localStorage.setItem("cibervo_workshops", JSON.stringify(S.workshops));
+    localStorage.setItem("cibervo_colors", JSON.stringify(S.instColors));
+}
+function getNotes(wid) {
+    const d = localStorage.getItem("cibervo_notes_" + wid);
+    return d ? JSON.parse(d) : { general: "", sessions: {} };
+}
+function saveNotesLocal(wid, notes) {
+    localStorage.setItem("cibervo_notes_" + wid, JSON.stringify(notes));
+}
+function getAllNotesLocal() {
+    const notes = {};
+    for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key.startsWith("cibervo_notes_")) {
+            const wid = key.replace("cibervo_notes_", "");
+            try { notes[wid] = JSON.parse(localStorage.getItem(key)); } catch(e) {}
+        }
+    }
+    return notes;
+}
+
+// Carga desde Firestore
+async function loadFromCloud() {
+    if (!S.firebaseReady || !S.user || S.user.uid === "local") return;
+    setSyncUI("pending","Sincronizando...");
+    try {
+        const doc = await fbDb.collection("users").doc(S.user.uid).get();
+        if (doc.exists) {
+            const data = doc.data();
+            S.workshops = data.workshops || JSON.parse(JSON.stringify(INITIAL_WORKSHOPS));
+            S.instColors = data.instColors || {...DEFAULT_COLORS};
+            // Cargar notas desde Firestore
+            if (data.notes) {
+                Object.entries(data.notes).forEach(([wid, n]) => saveNotesLocal(wid, n));
+            }
+            saveLocalCache();
+            setSyncUI("ok","Sincronizado");
+        } else {
+            // Primer acceso del usuario: migrar datos locales si existen
+            const local = loadFromLocalStorage();
+            const workshops = local.workshops || JSON.parse(JSON.stringify(INITIAL_WORKSHOPS));
+            const instColors = local.instColors || {...DEFAULT_COLORS};
+            const notes = getAllNotesLocal();
+            await fbDb.collection("users").doc(S.user.uid).set({
+                displayName: S.user.name,
+                workshops, instColors, notes,
+                createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+            S.workshops = workshops;
+            S.instColors = instColors;
+            saveLocalCache();
+            setSyncUI("ok","Sincronizado");
+            showToast("Datos migrados desde este dispositivo", "info");
+        }
+    } catch(err) {
+        console.warn("Error cargando desde Firestore:", err);
+        loadLocalToState();
+        setSyncUI("err","Sin conexión");
+        showToast("Error de sincronización. Usando datos locales.", "err");
+    }
+}
+
+// Guardar en Firestore (con debounce)
+let cloudSaveTimer = null;
+function saveToCloud() {
+    if (!S.firebaseReady || !S.user || S.user.uid === "local") return;
+    setSyncUI("pending","Guardando...");
+    clearTimeout(cloudSaveTimer);
+    cloudSaveTimer = setTimeout(async () => {
+        try {
+            const notes = getAllNotesLocal();
+            await fbDb.collection("users").doc(S.user.uid).update({
+                workshops: S.workshops,
+                instColors: S.instColors,
+                notes: notes,
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+            setSyncUI("ok","Sincronizado");
+        } catch(err) {
+            console.warn("Error guardando en Firestore:", err);
+            setSyncUI("err","Error al guardar");
+        }
+    }, 800);
+}
+
+// Forzar sincronización (recargar desde la nube)
+async function forceSync() {
+    if (!S.firebaseReady || !S.user || S.user.uid === "local") {
+        showToast("Firebase no configurado. Los datos son locales.", "info"); return;
+    }
+    showToast("Sincronizando con la nube...", "info");
+    await loadFromCloud();
+    renderCurrentView();
+    showToast("Sincronización completada");
+}
+
+function setSyncUI(status, label) {
+    const dot = document.getElementById("sync-dot");
+    const lbl = document.getElementById("sync-label");
+    dot.className = "sync-dot " + status;
+    lbl.textContent = label;
+}
+
+// ================================================================
+//  UTILIDADES
+// ================================================================
+function getInstColor(inst) {
+    if (!S.instColors[inst]) {
+        const used = Object.values(S.instColors);
+        const avail = COLOR_POOL.filter(c => !used.includes(c));
+        S.instColors[inst] = avail.length ? avail[0] : COLOR_POOL[Math.floor(Math.random()*COLOR_POOL.length)];
+        saveLocalCache(); saveToCloud();
+    }
+    return S.instColors[inst];
+}
+function fmtDate(iso) { const [y,m,d]=iso.split("-"); return d+"/"+m+"/"+y; }
+function dayOfWeek(iso) { return (new Date(iso+"T12:00:00").getDay()+6)%7; }
+function dayName(iso) { return DAY_FULL[dayOfWeek(iso)]; }
+function allDates() { const s=new Set(); S.workshops.forEach(w=>w.dates.forEach(d=>s.add(d))); return [...s].sort(); }
+function wsOnDate(d) { return S.workshops.filter(w=>w.dates.includes(d)); }
+function uniqInsts() { return [...new Set(S.workshops.map(w=>w.institution))]; }
+
+// ================================================================
+//  TOAST
+// ================================================================
+function showToast(msg, type="ok") {
+    const t = document.createElement("div");
+    t.className = "toast toast-"+type; t.textContent = msg;
+    document.getElementById("toast-c").appendChild(t);
+    requestAnimationFrame(() => t.classList.add("show"));
+    setTimeout(() => { t.classList.remove("show"); setTimeout(() => t.remove(), 300); }, 3000);
+}
+
+// ================================================================
+//  NAVEGACIÓN
+// ================================================================
+function switchView(v) {
+    S.view = v;
+    document.querySelectorAll(".nav-item").forEach(n => n.classList.toggle("active", n.dataset.view === v));
+    document.querySelectorAll("main > section").forEach(s => s.classList.add("hidden"));
+    document.getElementById("view-"+v)?.classList.remove("hidden");
+    document.getElementById("sidebar").classList.remove("open");
+    renderCurrentView();
+}
+function renderCurrentView() {
+    renderStats(); renderLegend();
+    if (S.view==="calendar") renderCalendar();
+    else if (S.view==="workshops") renderWorkshops();
+    else if (S.view==="add") renderForm();
+    else if (S.view==="availability") renderAvailability();
+}
+
+// ================================================================
+//  ESTADÍSTICAS
+// ================================================================
+function renderStats() {
+    const tw = S.workshops.length, ts = S.workshops.reduce((a,w)=>a+w.dates.length,0);
+    const ad = allDates(), today = new Date().toISOString().split("T")[0];
+    const nd = ad.find(d=>d>=today);
+    const nl = nd ? fmtDate(nd) : "Sin próximas";
+    document.querySelector("#stats-bar .grid").innerHTML = `
+        <div class="scard"><p class="text-xs text-stone-500 font-medium mb-1">Talleres</p><p class="snum" style="color:var(--accent)">${tw}</p></div>
+        <div class="scard"><p class="text-xs text-stone-500 font-medium mb-1">Sesiones totales</p><p class="snum" style="color:#B45309">${ts}</p></div>
+        <div class="scard"><p class="text-xs text-stone-500 font-medium mb-1">Próxima sesión</p><p class="snum text-lg" style="color:var(--fg)">${nl}</p></div>
+        <div class="scard"><p class="text-xs text-stone-500 font-medium mb-1">Instituciones</p><p class="snum" style="color:#7C3AED">${uniqInsts().length}</p></div>`;
+}
+function renderLegend() {
+    document.getElementById("legend-list").innerHTML = uniqInsts().map(i=>`<div class="flex items-center gap-2"><div class="w-3 h-3 rounded-sm flex-shrink-0" style="background:${getInstColor(i)}"></div><span class="text-xs text-stone-400 truncate">${i}</span></div>`).join("");
+}
+
+// ================================================================
+//  CALENDARIO
+// ================================================================
+function navMonth(d) { S.calMonth+=d; if(S.calMonth>11){S.calMonth=0;S.calYear++} if(S.calMonth<0){S.calMonth=11;S.calYear--} renderCalendar(); }
+function renderCalendar() {
+    document.getElementById("cal-title").textContent = MONTH_NAMES[S.calMonth]+" "+S.calYear;
+    const g = document.getElementById("cal-grid");
+    let h = DAY_NAMES.map(d=>`<div class="cal-hdr">${d}</div>`).join("");
+    const fd = new Date(S.calYear,S.calMonth,1), ld = new Date(S.calYear,S.calMonth+1,0), td = ld.getDate();
+    let so = (fd.getDay()+6)%7, pl = new Date(S.calYear,S.calMonth,0).getDate();
+    for(let i=so-1;i>=0;i--) h+=`<div class="cal-cell other"><span class="dn">${pl-i}</span></div>`;
+    for(let d=1;d<=td;d++){
+        const ds=`${S.calYear}-${String(S.calMonth+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+        const ws=wsOnDate(ds);
+        let pills=ws.map(w=>{const c=getInstColor(w.institution);const t=w.title.length>22?w.title.slice(0,20)+"...":w.title;return`<span class="cpill" style="background:${c}18;color:${c}" onclick="openModal('${w.id}')" title="${w.title} (${w.scheduleStart}-${w.scheduleEnd})">${t}</span>`;}).join("");
+        if(ws.length>2){pills=pills.split("</span>").slice(0,2).join("</span>")+`</span><span class="text-xs text-stone-400 pl-1">+${ws.length-2}</span>`;}
+        h+=`<div class="cal-cell"><span class="dn">${d}</span>${pills}</div>`;
+    }
+    const tc=so+td, rem=tc%7===0?0:7-tc%7;
+    for(let i=1;i<=rem;i++) h+=`<div class="cal-cell other"><span class="dn">${i}</span></div>`;
+    g.innerHTML=h;
+}
+
+// ================================================================
+//  LISTA DE TALLERES
+// ================================================================
+function renderWorkshops() {
+    const insts = uniqInsts();
+    document.getElementById("filter-bar").innerHTML = `<button class="fbtn ${S.filterInst==='all'?'active':''}" onclick="S.filterInst='all';renderWorkshops()">Todos</button>` + insts.map(i=>`<button class="fbtn ${S.filterInst===i?'active':''}" onclick="S.filterInst='${i.replace(/'/g,"\\'")}';renderWorkshops()">${i}</button>`).join("");
+    let f = S.workshops;
+    if(S.filterInst!=="all") f=f.filter(w=>w.institution===S.filterInst);
+    if(S.searchQuery){const q=S.searchQuery.toLowerCase();f=f.filter(w=>w.title.toLowerCase().includes(q)||w.id.includes(q)||w.institution.toLowerCase().includes(q));}
+    f.sort((a,b)=>a.dates[0].localeCompare(b.dates[0]));
+    const el = document.getElementById("workshop-list");
+    if(!f.length){el.innerHTML=`<div class="col-span-full text-center py-16 text-stone-400"><i class="fas fa-search text-3xl mb-3 block"></i><p>No se encontraron talleres</p></div>`;return;}
+    el.innerHTML = f.map(w=>{const c=getInstColor(w.institution);return`<div class="wcard" onclick="openModal('${w.id}')"><div style="position:absolute;top:0;left:0;bottom:0;width:4px;background:${c};border-radius:12px 0 0 12px"></div><div class="flex items-start justify-between mb-2"><span class="ibadge" style="background:${c}14;color:${c}">${w.institution}</span><span class="text-xs text-stone-400 font-mono">ID ${w.id}</span></div><h3 class="font-bold text-base mb-2 leading-snug" style="font-family:'Space Grotesk'">${w.title}</h3><div class="flex items-center gap-2 text-xs text-stone-500 mb-3"><i class="fas fa-clock"></i><span>${w.scheduleStart} - ${w.scheduleEnd}</span><span class="text-stone-300">|</span><i class="fas fa-calendar"></i><span>${w.dates.length} sesiones</span></div><p class="text-xs text-stone-400 leading-relaxed">${w.dates.map(d=>fmtDate(d)).join(", ")}</p></div>`;}).join("");
+}
+
+// ================================================================
+//  FORMULARIO
+// ================================================================
+function renderForm() {
+    const sel = document.getElementById("f-inst");
+    const insts = uniqInsts();
+    sel.innerHTML = insts.map(i=>`<option value="${i}">${i}</option>`).join("") + `<option value="__new">Otra...</option>`;
+    document.getElementById("form-title").textContent = S.editingId ? "Editar Capacitación" : "Nueva Capacitación";
+    document.getElementById("cancel-btn").classList.toggle("hidden", !S.editingId);
+    renderDatesList();
+}
+function addCustomInst() {
+    const name = prompt("Nombre de la institución:");
+    if(name&&name.trim()){const n=name.trim();const sel=document.getElementById("f-inst");const opt=document.createElement("option");opt.value=n;opt.textContent=n;sel.insertBefore(opt,sel.querySelector('option[value="__new"]'));sel.value=n;getInstColor(n);renderLegend();showToast("Institución añadida","info");}
+}
+function addDateToList(){const inp=document.getElementById("f-date");if(!inp.value)return;if(S.formDates.includes(inp.value)){showToast("Fecha ya añadida","err");return;}S.formDates.push(inp.value);S.formDates.sort();inp.value="";renderDatesList();}
+function removeDate(d){S.formDates=S.formDates.filter(x=>x!==d);renderDatesList();}
+function renderDatesList(){document.getElementById("dates-list").innerHTML=S.formDates.map(d=>`<span class="inline-flex items-center gap-1 text-xs bg-stone-100 text-stone-700 px-3 py-1.5 rounded-lg font-medium">${fmtDate(d)} (${dayName(d)})<button type="button" onclick="removeDate('${d}')" class="ml-1 text-stone-400 hover:text-red-500 transition"><i class="fas fa-xmark"></i></button></span>`).join("");}
+function handleFormSubmit(e){
+    e.preventDefault();
+    const id=document.getElementById("f-id").value.trim();
+    let inst=document.getElementById("f-inst").value;
+    const title=document.getElementById("f-title").value.trim();
+    const start=document.getElementById("f-start").value;
+    const end=document.getElementById("f-end").value;
+    if(inst==="__new"){showToast("Selecciona o crea una institución","err");return;}
+    if(!S.formDates.length){showToast("Añade al menos una fecha","err");return;}
+    if(start>=end){showToast("Hora de inicio debe ser anterior a la de fin","err");return;}
+    if(!S.editingId&&S.workshops.some(w=>w.id===id)){showToast("Ya existe un taller con ese ID","err");return;}
+    const ws={id,title,institution:inst,scheduleStart:start,scheduleEnd:end,dates:[...S.formDates]};
+    if(S.editingId){const idx=S.workshops.findIndex(w=>w.id===S.editingId);if(idx>=0)S.workshops[idx]=ws;S.editingId=null;showToast("Taller actualizado");}else{S.workshops.push(ws);showToast("Taller añadido");}
+    saveLocalCache();saveToCloud();S.formDates=[];document.getElementById("workshop-form").reset();switchView("workshops");
+}
+function cancelEdit(){S.editingId=null;S.formDates=[];document.getElementById("workshop-form").reset();renderForm();}
+function startEdit(id){const w=S.workshops.find(w=>w.id===id);if(!w)return;S.editingId=id;S.formDates=[...w.dates];switchView("add");setTimeout(()=>{document.getElementById("f-id").value=w.id;const sel=document.getElementById("f-inst");if(![...sel.options].some(o=>o.value===w.institution)){const opt=document.createElement("option");opt.value=w.institution;opt.textContent=w.institution;sel.insertBefore(opt,sel.querySelector('option[value="__new"]'));}sel.value=w.institution;document.getElementById("f-title").value=w.title;document.getElementById("f-start").value=w.scheduleStart;document.getElementById("f-end").value=w.scheduleEnd;renderDatesList();},50);}
+
+// ================================================================
+//  MODAL DETALLE
+// ================================================================
+function openModal(id){
+    const w=S.workshops.find(w=>w.id===id);if(!w)return;
+    const notes=getNotes(id),col=getInstColor(w.institution);
+    const m=document.getElementById("modal-overlay"),c=document.getElementById("modal-content");
+    c.innerHTML=`<div class="p-6 border-b border-stone-100"><div class="flex items-start justify-between"><div class="flex-1"><div class="flex items-center gap-2 mb-2"><span class="ibadge" style="background:${col}14;color:${col}">${w.institution}</span><span class="text-xs text-stone-400 font-mono">ID ${w.id}</span></div><h2 class="text-xl font-bold leading-tight" style="font-family:'Space Grotesk'">${w.title}</h2><p class="text-sm text-stone-500 mt-1"><i class="fas fa-clock mr-1"></i>${w.scheduleStart} - ${w.scheduleEnd} &nbsp;|&nbsp; <i class="fas fa-calendar mr-1"></i>${w.dates.length} sesiones</p></div><button onclick="closeModal()" class="w-8 h-8 rounded-lg hover:bg-stone-100 flex items-center justify-center text-stone-400 transition" aria-label="Cerrar"><i class="fas fa-xmark"></i></button></div></div><div class="p-6"><p class="text-xs font-semibold text-stone-500 uppercase tracking-wider mb-3">Contenido por sesión</p>${w.dates.map((d,i)=>{const hn=notes.sessions&&notes.sessions[d]&&notes.sessions[d].trim();return`<div class="sblock"><div class="shdr" onclick="toggleSess(this)"><i class="fas fa-chevron-right text-xs text-stone-400 transition-transform sarrow"></i><span class="text-sm font-medium flex-1">Sesión ${i+1}: ${fmtDate(d)} (${dayName(d)})</span><span class="ndot ${hn?'on':''}" title="Tiene notas"></span></div><div class="sbody"><textarea placeholder="Escribe el contenido o notas de esta sesión..." data-wid="${id}" data-dt="${d}" oninput="autoSaveNote(this)">${notes.sessions?.[d]||''}</textarea><p class="text-xs text-stone-400 mt-1 text-right nsaved" style="display:none"><i class="fas fa-check mr-1"></i>Guardado</p></div></div>`;}).join("")}<p class="text-xs font-semibold text-stone-500 uppercase tracking-wider mb-3 mt-5">Notas generales</p><textarea id="gen-notes" class="w-full min-h-[100px] border border-stone-200 rounded-lg p-3 text-sm outline-none focus:border-teal-700 transition" style="font-family:'DM Sans'" placeholder="Notas generales del taller..." oninput="autoSaveGen('${id}',this)">${notes.general||''}</textarea><p class="text-xs text-stone-400 mt-1 text-right" id="gen-saved" style="display:none"><i class="fas fa-check mr-1"></i>Guardado</p></div><div class="p-6 border-t border-stone-100 flex gap-3 justify-end"><button onclick="startEdit('${id}');closeModal()" class="btn-s text-sm py-2"><i class="fas fa-pen mr-2"></i>Editar</button><button onclick="confirmDel('${id}')" class="btn-d text-sm py-2"><i class="fas fa-trash mr-2"></i>Eliminar</button></div>`;
+    m.classList.add("show");document.body.style.overflow="hidden";
+}
+function closeModal(){document.getElementById("modal-overlay").classList.remove("show");document.body.style.overflow="";}
+function toggleSess(hdr){const b=hdr.nextElementSibling,a=hdr.querySelector(".sarrow");b.classList.toggle("open");a.style.transform=b.classList.contains("open")?"rotate(90deg)":"";}
+let noteTimers={};
+function autoSaveNote(ta){
+    const wid=ta.dataset.wid,d=ta.dataset.dt,se=ta.parentElement.querySelector(".nsaved"),dt=ta.closest(".sblock").querySelector(".ndot");
+    clearTimeout(noteTimers[wid+d]);
+    noteTimers[wid+d]=setTimeout(()=>{const n=getNotes(wid);if(!n.sessions)n.sessions={};n.sessions[d]=ta.value;saveNotesLocal(wid,n);saveToCloud();se.style.display="block";dt.classList.toggle("on",ta.value.trim().length>0);setTimeout(()=>se.style.display="none",1500);},500);
+}
+function autoSaveGen(wid,ta){
+    clearTimeout(noteTimers[wid+"_g"]);
+    noteTimers[wid+"_g"]=setTimeout(()=>{const n=getNotes(wid);n.general=ta.value;saveNotesLocal(wid,n);saveToCloud();const el=document.getElementById("gen-saved");el.style.display="block";setTimeout(()=>el.style.display="none",1500);},500);
+}
+function confirmDel(id){const w=S.workshops.find(w=>w.id===id);if(!w)return;document.getElementById("modal-content").innerHTML=`<div class="p-8 text-center"><div class="w-14 h-14 rounded-full bg-red-50 flex items-center justify-center mx-auto mb-4"><i class="fas fa-triangle-exclamation text-red-500 text-xl"></i></div><h3 class="text-lg font-bold mb-2" style="font-family:'Space Grotesk'">Eliminar taller</h3><p class="text-sm text-stone-500 mb-6">Se eliminará "<strong>${w.title}</strong>" y todas sus notas. Esta acción no se puede deshacer.</p><div class="flex gap-3 justify-center"><button onclick="openModal('${id}')" class="btn-s">Cancelar</button><button onclick="deleteWs('${id}')" class="btn-d">Sí, eliminar</button></div></div>`;}
+function deleteWs(id){S.workshops=S.workshops.filter(w=>w.id!==id);localStorage.removeItem("cibervo_notes_"+id);saveLocalCache();saveToCloud();closeModal();renderCurrentView();showToast("Taller eliminado");}
+
+// ================================================================
+//  DISPONIBILIDAD
+// ================================================================
+function navMonthAvail(d){S.availMonth+=d;if(S.availMonth>11){S.availMonth=0;S.availYear++}if(S.availMonth<0){S.availMonth=11;S.availYear--}renderAvailability();}
+function renderAvailability(){
+    document.getElementById("avail-title").textContent=MONTH_NAMES[S.availMonth]+" "+S.availYear;
+    const ld=new Date(S.availYear,S.availMonth+1,0).getDate();
+    let fm=0,fa=0,bm=0,ba=0,rows="";
+    for(let d=1;d<=ld;d++){
+        const ds=`${S.availYear}-${String(S.availMonth+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+        const dn=dayName(ds),ws=wsOnDate(ds),mw=ws.filter(w=>w.scheduleStart<"14:00"),aw=ws.filter(w=>w.scheduleStart>="14:00");
+        if(mw.length)bm++;else fm++;if(aw.length)ba++;else fa++;
+        const mc=mw.length?mw.map(w=>`<span class="avail-cell avail-busy block" style="background:${getInstColor(w.institution)}">${w.title.length>25?w.title.slice(0,23)+'...':w.title}</span>`).join(""):`<span class="avail-cell avail-free block">Libre</span>`;
+        const ac=aw.length?aw.map(w=>`<span class="avail-cell avail-busy block" style="background:${getInstColor(w.institution)}">${w.title.length>25?w.title.slice(0,23)+'...':w.title}</span>`).join(""):`<span class="avail-cell avail-free block">Libre</span>`;
+        rows+=`<tr class="border-t border-stone-100 hover:bg-stone-50 transition"><td class="py-2.5 px-4 font-medium text-sm">${fmtDate(ds)}</td><td class="py-2.5 px-4 text-sm text-stone-500 capitalize">${dn}</td><td class="py-2.5 px-4">${mc}</td><td class="py-2.5 px-4">${ac}</td></tr>`;
+    }
+    document.getElementById("avail-body").innerHTML=rows;
+    document.getElementById("avail-summary").innerHTML=`<div class="scard"><p class="text-xs text-stone-500 mb-1">Mañana libre</p><p class="snum text-lg" style="color:#059669">${fm}</p></div><div class="scard"><p class="text-xs text-stone-500 mb-1">Mañana ocupada</p><p class="snum text-lg" style="color:#DC2626">${bm}</p></div><div class="scard"><p class="text-xs text-stone-500 mb-1">Tarde libre</p><p class="snum text-lg" style="color:#059669">${fa}</p></div><div class="scard"><p class="text-xs text-stone-500 mb-1">Tarde ocupada</p><p class="snum text-lg" style="color:#DC2626">${ba}</p></div>`;
+}
+
+// ================================================================
+//  PDF / IMPRESIÓN
+// ================================================================
+function buildPDFTemplate(){
+    const area=document.getElementById("pdf-area");
+    const ld=new Date(S.calYear,S.calMonth+1,0).getDate(),fd=new Date(S.calYear,S.calMonth,1);
+    let so=(fd.getDay()+6)%7,pl=new Date(S.calYear,S.calMonth,0).getDate();
+    const insts=uniqInsts();
+    let cells=[];
+    for(let i=so-1;i>=0;i--) cells.push({day:pl-i,other:true,ws:[]});
+    for(let d=1;d<=ld;d++){const ds=`${S.calYear}-${String(S.calMonth+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;cells.push({day:d,other:false,ws:wsOnDate(ds)});}
+    while(cells.length%7!==0) cells.push({day:cells.length-so-ld+1,other:true,ws:[]});
+    let calRows="";
+    for(let r=0;r<cells.length;r+=7){calRows+="<tr>";for(let c=0;c<7;c++){const cl=cells[r+c],op=cl.other?"opacity:0.4;":"";let wh=cl.ws.map(w=>`<div style="font-size:8px;padding:2px 4px;margin-bottom:1px;border-radius:3px;background:${getInstColor(w.institution)}22;color:${getInstColor(w.institution)};font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${w.title.length>24?w.title.slice(0,22)+'...':w.title}</div>`).join("");calRows+=`<td style="border:1px solid #E7E5E4;padding:4px;vertical-align:top;min-height:70px;${op}"><div style="font-size:11px;font-weight:700;margin-bottom:3px;color:#1C1917">${cl.day}</div>${wh}</td>`;}calRows+="</tr>";}
+    let leg=insts.map(i=>`<span style="display:inline-flex;align-items:center;gap:5px;margin-right:16px;font-size:10px;font-weight:600;color:${getInstColor(i)}"><span style="width:10px;height:10px;border-radius:2px;background:${getInstColor(i)};display:inline-block"></span>${i}</span>`).join("");
+    let listH="<div style='margin-top:20px'><p style='font-size:13px;font-weight:700;margin-bottom:8px;color:#1C1917'>Detalle de talleres</p>";
+    S.workshops.filter(w=>w.dates.some(d=>d.startsWith(`${S.calYear}-${String(S.calMonth+1).padStart(2,"0")}`))).forEach(w=>{const dm=w.dates.filter(d=>d.startsWith(`${S.calYear}-${String(S.calMonth+1).padStart(2,"0")}`));listH+=`<div style="margin-bottom:8px;padding:8px 12px;border-left:3px solid ${getInstColor(w.institution)};background:#FAFAF9;border-radius:0 6px 6px 0"><div style="font-size:11px;font-weight:700;color:#1C1917">${w.title} <span style="color:#78716C;font-weight:400">(${w.institution})</span></div><div style="font-size:10px;color:#78716C;margin-top:2px">${w.scheduleStart}-${w.scheduleEnd} | ${dm.map(d=>fmtDate(d)).join(", ")}</div></div>`;});
+    listH+="</div>";
+    area.innerHTML=`<div style="padding:30px 36px;color:#1C1917"><div style="display:flex;align-items:center;gap:12px;margin-bottom:20px"><div style="width:36px;height:36px;border-radius:8px;background:#0F766E;display:flex;align-items:center;justify-content:center;color:white;font-size:16px"><i class="fas fa-chalkboard-user"></i></div><div><div style="font-size:18px;font-weight:700;font-family:'Space Grotesk',sans-serif">Calendario de Formaciones</div><div style="font-size:12px;color:#78716C">Cibervoluntarios — ${MONTH_NAMES[S.calMonth]} ${S.calYear}</div></div></div><table style="width:100%;border-collapse:collapse;margin-bottom:16px"><tr>${DAY_NAMES.map(d=>`<th style="border:1px solid #E7E5E4;padding:6px;background:#F5F5F4;font-size:10px;font-weight:700;text-align:center;color:#78716C;text-transform:uppercase">${d}</th>`).join("")}</tr>${calRows}</table><div>${leg}</div>${listH}</div>`;
+}
+async function downloadPDF(){
+    showToast("Generando PDF...","info");buildPDFTemplate();
+    try{const canvas=await html2canvas(document.getElementById("pdf-area"),{scale:2,useCORS:true,backgroundColor:"#FFFFFF"});
+    const{jsPDF}=window.jspdf;const pdf=new jsPDF("p","mm","a4");const iw=210,ih=(canvas.height*iw)/canvas.width;let hl=ih,p=0;
+    pdf.addImage(canvas.toDataURL("image/png"),"PNG",0,p,iw,ih);hl-=297;
+    while(hl>0){p=hl-ih;pdf.addPage();pdf.addImage(canvas.toDataURL("image/png"),"PNG",0,p,iw,ih);hl-=297;}
+    pdf.save(`calendario-${MONTH_NAMES[S.calMonth]}-${S.calYear}.pdf`);showToast("PDF descargado");}
+    catch(e){showToast("Error al generar PDF","err");console.error(e);}
+}
+function printCalendar(){buildPDFTemplate();window.print();}
+
+// ================================================================
+//  EVENTOS
+// ================================================================
+document.querySelectorAll(".nav-item").forEach(i=>i.addEventListener("click",()=>switchView(i.dataset.view)));
+document.getElementById("hamburger").addEventListener("click",()=>document.getElementById("sidebar").classList.toggle("open"));
+document.getElementById("search-input").addEventListener("input",e=>{S.searchQuery=e.target.value;renderWorkshops();});
+document.getElementById("modal-overlay").addEventListener("click",e=>{if(e.target===document.getElementById("modal-overlay"))closeModal();});
+document.addEventListener("keydown",e=>{if(e.key==="Escape")closeModal();});
+document.getElementById("f-inst").addEventListener("change",e=>{if(e.target.value==="__new")addCustomInst();});
+// Sincronizar al volver a la pestaña
+document.addEventListener("visibilitychange",()=>{
+    if(!document.hidden&&S.firebaseReady&&S.user&&S.user.uid!=="local"){loadFromCloud().then(()=>renderCurrentView());}
+});
+
+// ================================================================
+//  INICIALIZACIÓN
+// ================================================================
+function init(){
+    initFirebase();
+    if(S.firebaseReady){
+        fbAuth.onAuthStateChanged(onAuthStateChange);
+        // Persistencia de sesión
+        fbAuth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+    } else {
+        // Modo offline: acceso directo
+        onAuthStateChange(null);
+    }
+}
+init();
+</script>
+</body>
+</html>
